@@ -82,6 +82,8 @@
     </None>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="BitBool.h" />
+    <ClInclude Include="OnewireKeypad.h" />
     <ClInclude Include="__vm\.DorrAccessCtrlPrototype.vsarduino.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
