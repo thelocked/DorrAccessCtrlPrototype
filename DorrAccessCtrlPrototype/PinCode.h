@@ -9,14 +9,18 @@
 	#include "WProgram.h"
 #endif
 
+#define SUCCSESS 1
+#define FAIL 0
+#define IGNORED 2 
+
 class PinCode
 {
 
  public:
 	 PinCode(char* pincode);
-	 void addInput(char addInput);
+	 bool addInput(char addInput);
 	 void reset();
-	 bool checkPin();
+	 int checkPin();
 
 
 

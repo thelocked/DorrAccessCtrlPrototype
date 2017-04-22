@@ -5,6 +5,10 @@
 	Applikationen ska se till att en dörr endast kan öppnas med hjälp av en kod.
 	Dörren manuvres med hjälp av ett elektriskt elsutbläck som i strömlöst tillstånd
 	blockerar möjligheten att öpnna dörren.
+	Koden ska matas in med en sifffra i taget med viss fördöjning mellan inmatningarna som ska
+	hjälpa tilla att filtrera bort rgistrering av inmatning vid situationer tex. att en knapp
+	fastnar eller behålls nedtryckt, flera knappar trycks ned samtidigt eller snabba störningar
+	av inläsningar på ingången.
 	Men om korrekt kod anges så matas låsfunktionen med spänning och slutar blockera öppning
 	av dörren under en period
 
@@ -39,13 +43,15 @@ Hur systemet används:
 */
 
 #include "PinCode.h"
-#include <OnewireKeypad.h> //For info: http://playground.arduino.cc/Code/OneWireKeyPad
+#include "OnewireKeypad.h" //For info: http://playground.arduino.cc/Code/OneWireKeyPad
 
 //***Global Const and properties
 
-PinCode doorPinCode = PinCode("1234"); //Provide pincode for door access
+PinCode lockAccessPin = PinCode("1234"); //Provide pincode for door access
 
 #define userInputRetriesAllowed = 3 //How many times the user may enter wrong pin bef alarmt trigger.
+
+#define pauseForNextKeyPress = 500; //
 
 #define userInputResetDelay = 30000 //How long any input session from keypad will stored in millis
 #define doorAccessEnabledPeriod = 15000//How long the user is abled to open door millis.
@@ -77,24 +83,26 @@ char keyPadKEYS[] = {
 	'*','0','#'
 };
 
-//Object that gets input from keypadharware
+//Object that gets input from keypad
 OnewireKeypad <Print, 12> KeyPad(Serial, keyPadKEYS, keypadRows, keypadCols, KEYPAD_PIN, keypadRow_Res, keypadCol_Res, Precision);
 
 long LastkeyPressedTime = 0; //last input from user if not reseted..
 long doorLockOpenTime = 0; //is access or when was the lock opened.
 long alarmTriggerTime = 0; //is or when was the alarm triggerd.
 
-char KeyPressed;
-char lastKeyPressed;
-char lastPinInput;
+byte lastKpState = WAITING;
+char timeLastKeyPress = 0;
+//char lastPinInput;
 String pincodeInput = ""; //Stores input from keyPad by user.
+
 
 
 
 
 // the setup function runs once when you press reset or power the board
 void setup() {
-	Serial.begin(9600); //For debbugging output.
+	
+	Serial.begin(9600); //For debugging output.
 
 	//Set the pin modes and start values
 	pinMode(ALARM_PIN, OUTPUT);
@@ -107,46 +115,123 @@ void setup() {
 	digitalWrite(LED_OK_PIN, LOW); //Led inditation off.
 	digitalWrite(LED_ERR_PIN, LOW); //Led off
 
+	//To prevent detection of false keypress on start up
+	KeyPad.Getkey();
 
-
-	
+	//Clear session and provide serial info
+	resetSession();
 
 	Serial.println("End of setup.");
+
 
 }
 
 // the loop function runs over and over again until power down or reset
 void loop() {
 	
-	//Check for input if a key is pressed on key pad
-	byte KState = KeyPad.Key_State();
+	char keyPressed = false;
+	char userInput; //Store val from keypad input
+	
+	//Check for keypad input if a key is pressed on key pad
+	byte KpState = KeyPad.Key_State();
 
-	if (KState == PRESSED)
+	if (KpState == PRESSED)
 	{
-		if (KeyPressed = KeyPad.Getkey())
+		if (keyPressed = KeyPad.Getkey())
 		{
-			Serial << "Pressed: " << KeyPressed << "\n";
-			switch (KeyPressed)
+			Serial << "Pressed: " << keyPressed << "\n";
+			switch (keyPressed)
 			{
-			//case '*': checkPassword(); break;
-			//case '#': password.reset(); break;
-			//default: password.append(KeyPressed);
+			case '*': lockAccessPin.reset(); break;
+			case '#': lockAccessPin.checkPin(); break;
+			default: lockAccessPin.addInput(keyPressed);
 			}
 		}
 	}
-	else if (KState == HELD)
+
+	//Check serial for user input
+	char serialInput;
+	if (Serial.available() > 0)
 	{
-		//Serial << "Key:" << KP.Getkey() << " being held\n";
+		char serialRead = Serial.read();//get one char from serial.
+		Serial << "Serial input found: " << serialRead << "\n";
+		switch (serialRead)
+		{
+			case '*': lockAccessPin.reset(); break;
+			case '\n': lockAccessPin.checkPin(); break;
+			default: lockAccessPin.addInput(keyPressed);
+		}
+
 	}
+
+	else if (KpState == HELD)
+	{
+		Serial << "Key:" << KeyPad.Getkey() << " being held\n";
+	}
+	else if (KpState == RELEASED)
+	{
+		Serial << "Key Released\n";
+	}
+}
+
+//Called when user sends commit command and evaluates pin code and
+//provide response depending on result
+void userInputCommit()
+{
+	Serial << "user committed current input and pin code evaluation is performed\n";
+	int pinCheckStatus = lockAccessPin.checkPin();
+
+	if (pinCheckStatus == SUCCSESS)
+	{
+		//User have provided correct pin code and lock will be disabled
+		openDoorLock();
+	}
+	else if (pinCheckStatus == FAIL)
+	{
+		//User have entered incorrect pin code
+	}
+
+	switch (pinCheckStatus)
+	{
+	case SUCCSESS: openDoorLock(); break;
+	default:
+		break;
+	}
+
+}
+
+void openDoorLock()
+{
+	Serial << "Door lock will be disabled";
+}
+
+//User have provided an incorrect pin code.
+void incorrectPinCode()
+{
+	//Check if user have made to many retries
+
+}
+
+void beginAlarm()
+{
+	Serial << "Alarm is trigged!!";
 }
 
 //Used for resetting current user input session
 void resetSession()
 {
+	Serial << "Keypad input session is Reset.\n";
 	LastkeyPressedTime = 0; //last input from user if not reseted..
 	doorLockOpenTime = 0; //is access or when was the lock opened.
-	alarmTriggerTime = 0; //is or when was the alarm triggerd.
+	alarmTriggerTime = 0; //is or when was the alarm trigged.
 
-	//Print instruktions to serial window
-	Serial.println("Enable door access by enter correct pincode and confirm with <ENTER>");
+	lastKpState = WAITING;
+	timeLastKeyPress = 0;
+
+	
+
+
+
+	//Print instructions to serial window
+	Serial << "\nEnable door access by enter correct pin code and confirm with <ENTER>\n";
 }
